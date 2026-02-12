@@ -1,0 +1,26 @@
+name: Chzzk Downloader
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: '다운로드할 영상 주소'
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install yt-dlp
+      - name: Download
+        run: |
+          yt-dlp -o "video.mp4" "${{ github.event.inputs.url }}"
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: chzzk-video
+          path: video.mp4
