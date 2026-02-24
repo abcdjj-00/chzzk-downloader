@@ -1,10 +1,16 @@
-name: Chzzk Downloader
+name: Chzzk Section Downloader
 on:
   workflow_dispatch:
     inputs:
       url:
         description: '다운로드할 영상 주소'
         required: true
+      start_time:
+        description: '시작 시간 (예: 00:01:30 또는 90)'
+        default: '00:00:00'
+      end_time:
+        description: '종료 시간 (예: 00:02:10 또는 130)'
+        default: '00:00:10'
 
 jobs:
   build:
@@ -16,11 +22,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           pip install yt-dlp
-      - name: Download
+      - name: Download Section
         run: |
-          yt-dlp -o "video.mp4" "${{ github.event.inputs.url }}"
+          # --download-sections 옵션을 사용하여 특정 구간만 추출
+          yt-dlp --download-sections "*${{ github.event.inputs.start_time }}-${{ github.event.inputs.end_time }}" \
+                 -o "section.mp4" \
+                 "${{ github.event.inputs.url }}"
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: chzzk-video
-          path: video.mp4
+          name: chzzk-section-video
+          path: section.mp4
