@@ -1,4 +1,4 @@
-name: Chzzk Section Downloader
+name: Chzzk Smart Downloader
 on:
   workflow_dispatch:
     inputs:
@@ -6,11 +6,11 @@ on:
         description: '다운로드할 영상 주소'
         required: true
       start_time:
-        description: '시작 시간 (예: 00:01:30 또는 90)'
-        default: '00:00:00'
+        description: '시작 시간 (비워두면 전체 다운로드)'
+        required: false
       end_time:
-        description: '종료 시간 (예: 00:02:10 또는 130)'
-        default: '00:00:10'
+        description: '종료 시간 (비워두면 전체 다운로드)'
+        required: false
 
 jobs:
   build:
@@ -22,14 +22,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           pip install yt-dlp
-      - name: Download Section
+      - name: Download Video
         run: |
-          # --download-sections 옵션을 사용하여 특정 구간만 추출
-          yt-dlp --download-sections "*${{ github.event.inputs.start_time }}-${{ github.event.inputs.end_time }}" \
-                 -o "section.mp4" \
-                 "${{ github.event.inputs.url }}"
+          # 입력값이 있는지 확인하여 분기 처리
+          START="${{ github.event.inputs.start_time }}"
+          END="${{ github.event.inputs.end_time }}"
+          URL="${{ github.event.inputs.url }}"
+
+          if [ -z "$START" ] || [ -z "$END" ]; then
+            echo "시간 입력이 없어 전체 영상을 다운로드합니다."
+            yt-dlp -o "result.mp4" "$URL"
+          else
+            echo "지정된 구간($START ~ $END)을 다운로드합니다."
+            yt-dlp --download-sections "*$START-$END" -o "result.mp4" "$URL"
+          fi
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: chzzk-section-video
-          path: section.mp4
+          name: chzzk-video
+          path: result.mp4
