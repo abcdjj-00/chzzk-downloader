@@ -6,10 +6,10 @@ on:
         description: '다운로드할 영상 주소'
         required: true
       start_time:
-        description: '시작 시간 (비워두면 전체)'
+        description: '시작 시간 (예: 00:00:00, 비워두면 처음부터)'
         required: false
       end_time:
-        description: '종료 시간 (비워두면 전체)'
+        description: '종료 시간 (예: 01:00:00, 비워두면 끝까지)'
         required: false
 
 jobs:
@@ -17,30 +17,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Install Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           pip install yt-dlp
+
       - name: Download Video
         run: |
           URL="${{ github.event.inputs.url }}"
           START="${{ github.event.inputs.start_time }}"
           END="${{ github.event.inputs.end_time }}"
           
-          # 파일명 템플릿 설정: %(title)s는 영상 제목을 의미합니다.
-          # .%(ext)s는 자동으로 mp4 등의 확장자를 붙여줍니다.
+          # 시작 시간이 비어있으면 00:00:00으로 기본값 설정
+          if [ -z "$START" ]; then
+            START="00:00:00"
+          fi
+
+          # 파일명 형식 설정 (치지직 영상 제목.확장자)
           FILENAME_FORMAT="%(title)s.%(ext)s"
 
-          if [ -z "$START" ] || [ -z "$END" ]; then
+          # 종료 시간이 비어있는지 확인하여 전체 또는 구간 다운로드 결정
+          if [ -z "$END" ]; then
             echo "전체 영상을 다운로드합니다."
             yt-dlp -o "$FILENAME_FORMAT" "$URL"
           else
             echo "지정된 구간($START ~ $END)을 다운로드합니다."
+            # 구간 다운로드 옵션 사용
             yt-dlp --download-sections "*$START-$END" -o "$FILENAME_FORMAT" "$URL"
           fi
-      - name: Upload
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: chzzk-downloaded-video
-          path: ./*.mp4  # 모든 mp4 파일을 업로드 (제목이 반영된 파일)
+          path: ./*.mp4  # 생성된 모든 mp4 파일을 업로드
