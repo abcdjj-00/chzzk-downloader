@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>다운로드</title>
+    <style>
+        @font-face {
+            font-family: 'SongMyung';
+            src: url('./SongMyung-Regular.ttf') format('truetype');
+        }
+
+        body {
+            background-color: #121212;
+            color: #dcdcdc;
+            font-family: 'SongMyung', serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            text-align: center;
+            border: 1px solid #333;
+            padding: 40px;
+            background: #1e1e1e;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        input {
+            width: 300px;
+            padding: 10px;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: white;
+            font-family: 'SongMyung', serif;
+            margin-bottom: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #4a4a4a;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-family: 'SongMyung', serif;
+        }
+
+        button:hover { background: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Chzzk 영상 저장소</h1>
+        <input type="text" id="videoUrl" placeholder="치지직 주소를 입력하세요">
+        <br>
+        <button onclick="startDownload()">다운로드 시작</button>
+        <p id="status"></p>
+    </div>
+
+    <script>
+        function startDownload() {
+            const url = document.getElementById('videoUrl').value;
+            if(!url) return alert("주소를 입력해주세요!");
+            
+            document.getElementById('status').innerText = "깃허브 비서에게 명령을 전달하는 중...";
+            
+            // 여기에 깃허브와 연결하는 코드가 들어갑니다.
+        }
+    </script>
+</body>
+</html>
