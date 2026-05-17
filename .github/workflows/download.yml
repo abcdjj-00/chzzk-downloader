@@ -5,6 +5,9 @@ on:
       url:
         description: '다운로드할 영상 주소'
         required: true
+      file_name:
+        description: '저장할 파일 이름 (선택사항, 확장자 미포함. 비워두면 영상 제목으로 저장)'
+        required: false
       start_time:
         description: '시작 시간 (예: 00:00:00, 비워두면 처음부터)'
         required: false
@@ -27,6 +30,7 @@ jobs:
       - name: Download Video
         run: |
           URL="${{ github.event.inputs.url }}"
+          CUSTOM_NAME="${{ github.event.inputs.file_name }}"
           START="${{ github.event.inputs.start_time }}"
           END="${{ github.event.inputs.end_time }}"
           
@@ -34,7 +38,12 @@ jobs:
             START="00:00:00"
           fi
 
-          FILENAME_FORMAT="%(title)s.%(ext)s"
+          # 사용자가 이름을 입력했으면 해당 이름으로, 비워뒀으면 기본 제목(title)으로 포맷 설정
+          if [ -z "$CUSTOM_NAME" ]; then
+            FILENAME_FORMAT="%(title)s.%(ext)s"
+          else
+            FILENAME_FORMAT="${CUSTOM_NAME}.%(ext)s"
+          fi
 
           if [ -z "$END" ]; then
             echo "전체 영상을 다운로드합니다."
