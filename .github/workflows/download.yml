@@ -34,30 +34,23 @@ jobs:
           START="${{ github.event.inputs.start_time }}"
           END="${{ github.event.inputs.end_time }}"
           
-          # 사용자가 이름을 입력했으면 해당 이름으로, 비워뒀으면 기본 제목(title)으로 포맷 설정
+          if [ -z "$START" ]; then
+            START="00:00:00"
+          fi
+
           if [ -z "$CUSTOM_NAME" ]; then
             FILENAME_FORMAT="%(title)s.%(ext)s"
           else
             FILENAME_FORMAT="${CUSTOM_NAME}.%(ext)s"
           fi
 
-          # 기본 yt-dlp 명령어
-          YT_DLP_CMD="yt-dlp -f 'bv*+ba/b' -o '$FILENAME_FORMAT'"
-
-          # 구간 다운로드 옵션 추가
-          if [ ! -z "$START" ] || [ ! -z "$END" ]; then
-            START="${START:-00:00:00}"
-            if [ ! -z "$END" ]; then
-              YT_DLP_CMD="$YT_DLP_CMD --download-sections '*$START-$END'"
-              echo "지정된 구간($START ~ $END)을 다운로드합니다."
-            else
-              echo "시작 시간($START)부터 끝까지 다운로드합니다."
-            fi
-          else
+          if [ -z "$END" ]; then
             echo "전체 영상을 다운로드합니다."
+            yt-dlp --merge-output-format mp4 -o "$FILENAME_FORMAT" "$URL"
+          else
+            echo "지정된 구간($START ~ $END)을 다운로드합니다."
+            yt-dlp --merge-output-format mp4 --download-sections "*$START-$END" -o "$FILENAME_FORMAT" "$URL"
           fi
-
-          eval "$YT_DLP_CMD '$URL'"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
