@@ -1,0 +1,43 @@
+name: SOOP Smart Downloader
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: '다운로드할 SOOP 영상 주소 (VOD URL)'
+        required: true
+      file_name:
+        description: '저장할 파일 이름 (선택사항, 확장자 미포함. 비워두면 영상 제목으로 저장)'
+        required: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install --upgrade yt-dlp
+
+      - name: Download Video
+        run: |
+          URL="${{ github.event.inputs.url }}"
+          CUSTOM_NAME="${{ github.event.inputs.file_name }}"
+          
+          if [ -z "$CUSTOM_NAME" ]; then
+            FILENAME_FORMAT="%(title)s.%(ext)s"
+          else
+            FILENAME_FORMAT="${CUSTOM_NAME}.%(ext)s"
+          fi
+
+          echo "전체 영상을 다운로드합니다."
+          yt-dlp --concurrent-fragments 5 --merge-output-format mp4 -o "$FILENAME_FORMAT" "$URL"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: soop-downloaded-video
+          path: ./*.mp4
