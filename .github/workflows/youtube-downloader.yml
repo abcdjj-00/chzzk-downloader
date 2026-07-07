@@ -1,0 +1,70 @@
+name: YouTube Smart Downloader
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: '다운로드할 유튜브 영상 또는 재생목록 주소'
+        required: true
+      file_name:
+        description: '저장할 파일 이름 (선택사항, 확장자 미포함. 비워두면 영상 제목으로 저장)'
+        required: false
+      start_time:
+        description: '시작 시간 (예: 00:00:00, 비워두면 처음부터)'
+        required: false
+      end_time:
+        description: '종료 시간 (예: 01:00:00, 비워두면 끝까지)'
+        required: false
+      allow_playlist:
+        description: '재생목록(playlist)을 허용하려면 true, 개별 영상만 다운로드하려면 false (기본: false)'
+        required: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python3 -m pip install --upgrade pip
+          pip install --upgrade yt-dlp
+
+      - name: Download YouTube Video
+        run: |
+          URL="${{ github.event.inputs.url }}"
+          CUSTOM_NAME="${{ github.event.inputs.file_name }}"
+          START="${{ github.event.inputs.start_time }}"
+          END="${{ github.event.inputs.end_time }}"
+          ALLOW_PLAYLIST="${{ github.event.inputs.allow_playlist }}"
+
+          if [ -z "$CUSTOM_NAME" ]; then
+            FILENAME_FORMAT="%(title)s.%(ext)s"
+          else
+            FILENAME_FORMAT="${CUSTOM_NAME}.%(ext)s"
+          fi
+
+          # yt-dlp format: prefer mp4-compatible merge
+          FORMAT="bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4"
+
+          # playlist handling: default to no-playlist to avoid downloading an entire channel/playlist by accident
+          PLAYLIST_OPT="--no-playlist"
+          if [ "$ALLOW_PLAYLIST" = "true" ]; then
+            PLAYLIST_OPT=""
+          fi
+
+          if [ -z "$END" ]; then
+            echo "전체 영상을 다운로드합니다. (playlist 허용: $ALLOW_PLAYLIST)"
+            yt-dlp $PLAYLIST_OPT -f "$FORMAT" --merge-output-format mp4 -o "$FILENAME_FORMAT" "$URL"
+          else
+            echo "지정된 구간($START ~ $END)을 다운로드합니다. (playlist 허용: $ALLOW_PLAYLIST)"
+            yt-dlp $PLAYLIST_OPT -f "$FORMAT" --merge-output-format mp4 --download-sections "*$START-$END" -o "$FILENAME_FORMAT" "$URL"
+          fi
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-downloaded-video
+          path: ./*.mp4
