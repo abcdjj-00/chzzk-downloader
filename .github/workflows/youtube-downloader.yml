@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       url:
-        description: '다운로드할 유튜브 영상 또는 재생목록 주소'
+        description: '다운로드할 유튜브 영상 주소'
         required: true
       file_name:
         description: '저장할 파일 이름 (선택사항, 확장자 미포함. 비워두면 영상 제목으로 저장)'
@@ -14,9 +14,6 @@ on:
         required: false
       end_time:
         description: '종료 시간 (예: 01:00:00, 비워두면 끝까지)'
-        required: false
-      allow_playlist:
-        description: '재생목록(playlist)을 허용하려면 true, 개별 영상만 다운로드하려면 false (기본: false)'
         required: false
 
 jobs:
@@ -32,13 +29,19 @@ jobs:
           python3 -m pip install --upgrade pip
           pip install --upgrade yt-dlp
 
+      - name: Create Cookies File
+        env:
+          COOKIES_DATA: ${{ secrets.YOUTUBE_COOKIES }}
+        run: |
+          echo "$COOKIES_DATA" > cookies.txt
+          chmod 600 cookies.txt
+
       - name: Download YouTube Video
         run: |
           URL="${{ github.event.inputs.url }}"
           CUSTOM_NAME="${{ github.event.inputs.file_name }}"
           START="${{ github.event.inputs.start_time }}"
           END="${{ github.event.inputs.end_time }}"
-          ALLOW_PLAYLIST="${{ github.event.inputs.allow_playlist }}"
 
           if [ -z "$CUSTOM_NAME" ]; then
             FILENAME_FORMAT="%(title)s.%(ext)s"
@@ -49,19 +52,17 @@ jobs:
           # yt-dlp format: prefer mp4-compatible merge
           FORMAT="bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4"
 
-          # playlist handling: default to no-playlist to avoid downloading an entire channel/playlist by accident
-          PLAYLIST_OPT="--no-playlist"
-          if [ "$ALLOW_PLAYLIST" = "true" ]; then
-            PLAYLIST_OPT=""
+          if [ -z "$END" ]; then
+            echo "전체 영상을 다운로드합니다."
+            yt-dlp -f "$FORMAT" --merge-output-format mp4 --cookies cookies.txt -o "$FILENAME_FORMAT" "$URL"
+          else
+            echo "지정된 구간($START ~ $END)을 다운로드합니다."
+            yt-dlp -f "$FORMAT" --merge-output-format mp4 --download-sections "*$START-$END" --cookies cookies.txt -o "$FILENAME_FORMAT" "$URL"
           fi
 
-          if [ -z "$END" ]; then
-            echo "전체 영상을 다운로드합니다. (playlist 허용: $ALLOW_PLAYLIST)"
-            yt-dlp $PLAYLIST_OPT -f "$FORMAT" --merge-output-format mp4 -o "$FILENAME_FORMAT" "$URL"
-          else
-            echo "지정된 구간($START ~ $END)을 다운로드합니다. (playlist 허용: $ALLOW_PLAYLIST)"
-            yt-dlp $PLAYLIST_OPT -f "$FORMAT" --merge-output-format mp4 --download-sections "*$START-$END" -o "$FILENAME_FORMAT" "$URL"
-          fi
+      - name: Cleanup
+        run: |
+          rm -f cookies.txt
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
