@@ -29,12 +29,136 @@ jobs:
           python3 -m pip install --upgrade pip
           pip install --upgrade yt-dlp
 
-      - name: Create Cookies File
+      - name: Create Cookies File (robust)
         env:
           COOKIES_DATA: ${{ secrets.YOUTUBE_COOKIES }}
         run: |
-          echo "$COOKIES_DATA" > cookies.txt
-          chmod 600 cookies.txt
+          # By default we won't use cookies unless secret is provided and conversion succeeds
+          USE_COOKIES=0
+
+          if [ -z "${COOKIES_DATA}" ]; then
+            echo "No YOUTUBE_COOKIES secret set; will download without cookies."
+          else
+            echo "Preparing cookies file..."
+
+            # Support a 'base64:' prefix for storing base64-encoded cookies in the secret
+            if echo "$COOKIES_DATA" | sed -n '1p' | grep -q '^base64:'; then
+              echo "Detected base64-encoded cookie data (prefix 'base64:'). Decoding..."
+              echo "$COOKIES_DATA" | sed 's/^base64://' | base64 --decode > cookies_raw || true
+            else
+              # Write secret to a raw file. This preserves newlines if the secret contains them.
+              printf '%s' "$COOKIES_DATA" > cookies_raw || true
+            fi
+
+            # Quick check: does the raw file already look like a Netscape cookie file?
+            if grep -q "Netscape" cookies_raw 2>/dev/null || grep -q "#HttpOnly_" cookies_raw 2>/dev/null; then
+              echo "cookies_raw already looks like a Netscape cookie file. Using it as cookies.txt"
+              mv cookies_raw cookies.txt
+              USE_COOKIES=1
+            else
+              # Try to detect JSON export and convert to Netscape format using Python
+              firstchar=$(head -c1 cookies_raw || echo "")
+              if [ "$firstchar" = "{" ] || [ "$firstchar" = "[" ]; then
+                echo "Detected JSON cookie export. Attempting conversion to Netscape format..."
+                python3 - <<'PY' cookies_raw
+import sys, json
+fn = sys.argv[1]
+try:
+    with open(fn, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+except Exception as e:
+    print('ERROR: failed to parse JSON cookies:', e, file=sys.stderr)
+    sys.exit(2)
+
+def to_line(item):
+    # common keys: domain, host, path, secure, hostOnly, expirationDate/expires, name, value
+    domain = item.get('domain') or item.get('host') or item.get('hostName') or ''
+    path = item.get('path', '/')
+    secure = 'TRUE' if item.get('secure') else 'FALSE'
+    host_only = item.get('hostOnly', False)
+    if host_only:
+        domain_field = domain
+    else:
+        domain_field = domain if domain.startswith('.') else ('.' + domain if domain else '')
+    expires = int(item.get('expirationDate') or item.get('expires') or 0)
+    name = item.get('name') or ''
+    value = item.get('value') or ''
+    return '\t'.join([domain_field, 'TRUE', path, secure, str(expires), name, value])
+
+out_lines = []
+if isinstance(data, list):
+    for it in data:
+        out_lines.append(to_line(it))
+else:
+    # some exports wrap cookies under a key
+    cookies = data.get('cookies') or data.get('items') or []
+    for it in cookies:
+        out_lines.append(to_line(it))
+
+print('# Netscape HTTP Cookie File')
+print('\n'.join(out_lines))
+PY
+                # run conversion and capture return code
+                if [ $? -eq 0 ]; then
+                  mv cookies_raw cookies.json
+                  # overwrite cookies.txt with converted output (python printed to stdout)
+                  python3 - <<'PY' cookies.json > cookies.txt
+import sys, json
+fn = sys.argv[1]
+with open(fn, 'r', encoding='utf-8') as f:
+    data = json.load(f)
+
+def to_line(item):
+    domain = item.get('domain') or item.get('host') or item.get('hostName') or ''
+    path = item.get('path', '/')
+    secure = 'TRUE' if item.get('secure') else 'FALSE'
+    host_only = item.get('hostOnly', False)
+    if host_only:
+        domain_field = domain
+    else:
+        domain_field = domain if domain.startswith('.') else ('.' + domain if domain else '')
+    expires = int(item.get('expirationDate') or item.get('expires') or 0)
+    name = item.get('name') or ''
+    value = item.get('value') or ''
+    return '\t'.join([domain_field, 'TRUE', path, secure, str(expires), name, value])
+
+out_lines = []
+if isinstance(data, list):
+    for it in data:
+        out_lines.append(to_line(it))
+else:
+    cookies = data.get('cookies') or data.get('items') or []
+    for it in cookies:
+        out_lines.append(to_line(it))
+
+sys.stdout.write('# Netscape HTTP Cookie File\n')
+sys.stdout.write('\n'.join(out_lines))
+PY
+                  if [ $? -eq 0 ]; then
+                    echo "Converted JSON to Netscape cookies.txt"
+                    USE_COOKIES=1
+                  else
+                    echo "Conversion failed; will not use cookies."
+                    rm -f cookies_raw cookies.json
+                  fi
+                else
+                  echo "JSON parse failed; will not use cookies."
+                  rm -f cookies_raw
+                fi
+              else
+                echo "cookies_raw is not Netscape format and not JSON; will not use cookies."
+                rm -f cookies_raw
+              fi
+            fi
+          fi
+
+          # Set strict permissions if we have a cookie file
+          if [ -f cookies.txt ]; then
+            chmod 600 cookies.txt || true
+          fi
+
+          # Export flag for later steps
+          echo "USE_COOKIES=$USE_COOKIES" >> $GITHUB_ENV
 
       - name: Download YouTube Video
         run: |
@@ -49,20 +173,34 @@ jobs:
             FILENAME_FORMAT="${CUSTOM_NAME}.%(ext)s"
           fi
 
-          # yt-dlp format: prefer mp4-compatible merge
           FORMAT="bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4"
 
-          if [ -z "$END" ]; then
-            echo "전체 영상을 다운로드합니다."
-            yt-dlp -f "$FORMAT" --merge-output-format mp4 --cookies cookies.txt -o "$FILENAME_FORMAT" "$URL"
+          # Read the cookie usage flag
+          USE_COOKIES=${USE_COOKIES:-0}
+
+          if [ "$USE_COOKIES" -eq 1 ]; then
+            COOKIE_ARG=(--cookies cookies.txt)
           else
-            echo "지정된 구간($START ~ $END)을 다운로드합니다."
-            yt-dlp -f "$FORMAT" --merge-output-format mp4 --download-sections "*$START-$END" --cookies cookies.txt -o "$FILENAME_FORMAT" "$URL"
+            COOKIE_ARG=()
+          fi
+
+          if [ -z "$END" ]; then
+            echo "전체 영상을 다운로드합니다. (using cookies: $USE_COOKIES)"
+            yt-dlp -f "$FORMAT" --merge-output-format mp4 "${COOKIE_ARG[@]}" -o "$FILENAME_FORMAT" "$URL" || {
+              echo "yt-dlp failed using cookies (if any). Retrying without cookies..."
+              yt-dlp -f "$FORMAT" --merge-output-format mp4 -o "$FILENAME_FORMAT" "$URL"
+            }
+          else
+            echo "지정된 구간($START ~ $END)을 다운로드합니다. (using cookies: $USE_COOKIES)"
+            yt-dlp -f "$FORMAT" --merge-output-format mp4 --download-sections "*$START-$END" "${COOKIE_ARG[@]}" -o "$FILENAME_FORMAT" "$URL" || {
+              echo "yt-dlp failed using cookies (if any). Retrying without cookies..."
+              yt-dlp -f "$FORMAT" --merge-output-format mp4 --download-sections "*$START-$END" -o "$FILENAME_FORMAT" "$URL"
+            }
           fi
 
       - name: Cleanup
         run: |
-          rm -f cookies.txt
+          rm -f cookies.txt cookies_raw cookies.json || true
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
