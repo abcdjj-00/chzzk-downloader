@@ -60,7 +60,7 @@ jobs:
               firstchar=$(head -c1 cookies_raw || echo "")
               if [ "$firstchar" = "{" ] || [ "$firstchar" = "[" ]; then
                 echo "Detected JSON cookie export. Attempting conversion to Netscape format..."
-                python3 - <<'PY' cookies_raw
+                python3 - cookies_raw <<'PY'
 import sys, json
 fn = sys.argv[1]
 try:
@@ -102,7 +102,7 @@ PY
                 if [ $? -eq 0 ]; then
                   mv cookies_raw cookies.json
                   # overwrite cookies.txt with converted output (python printed to stdout)
-                  python3 - <<'PY' cookies.json > cookies.txt
+                  python3 - cookies.json <<'PY' > cookies.txt
 import sys, json
 fn = sys.argv[1]
 with open(fn, 'r', encoding='utf-8') as f:
