@@ -1,0 +1,62 @@
+name: YouTube Smart Downloader
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: '다운로드할 유튜브 영상 주소'
+        required: true
+      file_name:
+        description: '저장할 파일 이름 (선택사항, 확장자 미포함. 비워두면 영상 제목으로 저장)'
+        required: false
+      start_time:
+        description: '시작 시간 (예: 00:00:00, 비워두면 처음부터)'
+        required: false
+      end_time:
+        description: '종료 시간 (예: 01:00:00, 비워두면 끝까지)'
+        required: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install yt-dlp
+
+      - name: Download Video
+        run: |
+          URL="${{ github.event.inputs.url }}"
+          CUSTOM_NAME="${{ github.event.inputs.file_name }}"
+          START="${{ github.event.inputs.start_time }}"
+          END="${{ github.event.inputs.end_time }}"
+          
+          if [ -z "$START" ]; then
+            START="00:00:00"
+          fi
+
+          if [ -z "$CUSTOM_NAME" ]; then
+            FILENAME_FORMAT="%(title)s.%(ext)s"
+          else
+            FILENAME_FORMAT="${CUSTOM_NAME}.%(ext)s"
+          fi
+
+          # 유튜브 고화질(1080p 이상) 영상과 음성을 MP4로 깔끔하게 병합하는 옵션
+          FORMAT_OPTS="-f bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best --merge-output-format mp4"
+
+          if [ -z "$END" ]; then
+            echo "전체 영상을 다운로드합니다."
+            yt-dlp $FORMAT_OPTS -o "$FILENAME_FORMAT" "$URL"
+          else
+            echo "지정된 구간($START ~ $END)을 다운로드합니다."
+            yt-dlp $FORMAT_OPTS --download-sections "*$START-$END" --force-keyframe-at-cuts -o "$FILENAME_FORMAT" "$URL"
+          fi
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-downloaded-video
+          path: ./*.mp4
