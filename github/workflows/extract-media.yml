@@ -1,0 +1,41 @@
+name: Extract Audio and Video
+
+on:
+  workflow_dispatch: # 수동으로 액션을 실행할 수 있게 설정
+    inputs:
+      input_file:
+        description: '입력 파일명 (예: input.mp4)'
+        required: true
+        default: 'input.mp4'
+
+jobs:
+  extract:
+      runs-on: ubuntu-latest
+
+      steps:
+      - name: 📥 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 🎬 FFmpeg 설치
+        uses: FedericoCarboni/setup-ffmpeg@v3
+        with:
+          # 필요한 경우 특정 버전 지정 가능
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🎵 음원(MP3) 추출 실행
+        run: |
+          # -i: 입력 파일, -vn: 비디오 트랙 제거, -acodec: 오디오 코덱 지정
+          ffmpeg -i "${{ inputs.input_file }}" -vn -acodec libmp3lame -ab 192k output_audio.mp3
+
+      - name: ✂️ 특정 구간 영상/음원 추출 예시 (0분 10초부터 5초간)
+        run: |
+          # -ss: 시작 시간, -t: 지속 시간 (초)
+          ffmpeg -i "${{ inputs.input_file }}" -ss 00:00:10 -t 5 -c:v copy -c:a copy clipped_video.mp4
+
+      - name: 📤 결과물 업로드 (Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: extracted-media-files
+          path: |
+            output_audio.mp3
+            clipped_video.mp4
