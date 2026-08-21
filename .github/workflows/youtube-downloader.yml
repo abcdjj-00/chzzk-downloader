@@ -1,0 +1,43 @@
+name: YouTube Downloader
+
+on:
+  workflow_dispatch: # 깃허브 웹페이지에서 수동으로 실행할 수 있게 설정
+    inputs:
+      youtube_url:
+        description: '다운로드할 유튜브 영상 URL'
+        required: true
+        type: string
+      download_type:
+        description: '추출 방식 선택'
+        required: true
+        default: 'audio'
+        type: choice
+        options:
+          - audio (MP3 음원)
+          - video (최고화질 영상)
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies (yt-dlp & FFmpeg)
+        uses: AnimMouse/setup-yt-dlp@v3 # yt-dlp와 FFmpeg를 자동으로 세팅해주는 액션
+
+      - name: Run Download Script
+        run: |
+          python download.py "${{ github.event.inputs.youtube_url }}" "${{ github.event.inputs.download_type }}"
+
+      - name: Upload Result Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: downloaded-media
+          path: output/*
